@@ -1,0 +1,10 @@
+{
+  "name": "surliv-v5",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Sûrliv V5 - API cloud-ready avec PostgreSQL et SSE",
+  "type": "module",
+  "scripts": {"start":"node server.js","dev":"node --watch server.js"},
+  "engines": {"node": ">=20"},
+  "dependencies": {"express":"^5.1.0","pg":"^8.16.3"}
+}
