@@ -1,0 +1,18 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+pydantic==2.9.2
+pydantic-settings==2.5.2
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+scipy==1.13.1
+boto3==1.35.36
+aiofiles==24.1.0
+pytest==8.3.3
+httpx==0.27.2
+
+# Optional real detector (heavy, GPU-friendly). Uncomment to use YOLO instead
+# of the built-in OpenCV fallback detector. Requires ~2GB+ download.
+# torch==2.4.1
+# torchvision==0.19.1
+# ultralytics==8.3.14

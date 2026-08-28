@@ -1,0 +1,39 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_PATH=/data/storage
+      - MAX_VIDEO_SIZE_MB=200
+      - MAX_VIDEO_DURATION_SECONDS=120
+      - MAX_CONCURRENT_JOBS=2
+      - DEVICE=cpu
+      - DETECTOR_BACKEND=opencv
+    volumes:
+      - storage:/data/storage
+    command: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - ENV=development
+      - STORAGE_BACKEND=local
+      - LOCAL_STORAGE_PATH=/data/storage
+      - DEVICE=cpu
+      - DETECTOR_BACKEND=opencv
+      - WORKER_POLL_INTERVAL=2
+    volumes:
+      - storage:/data/storage
+    command: python worker/worker.py
+    depends_on:
+      - web
+
+volumes:
+  storage:
