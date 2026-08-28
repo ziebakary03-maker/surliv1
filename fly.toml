@@ -1,61 +1,48 @@
-# fly.toml — configuration de déploiement Fly.io (section 25 du spec)
+# fly.toml app configuration file generated for tzb-app on 2026-08-28T22:30:19Z
 #
-# Commandes:
-#   fly launch --no-deploy        # génère/valide l'app à partir de ce fichier
-#   fly volumes create storage --size 10   # uniquement si STORAGE_BACKEND=local (déconseillé, cf README)
-#   fly secrets set S3_ACCESS_KEY=... S3_SECRET_KEY=... S3_ENDPOINT=...
-#   fly deploy
-#   fly logs                      # suivre les logs (web + worker)
-#   fly status                    # état des machines par process group
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "object-tracker"
-primary_region = "cdg"  # Paris — à adapter à votre région
+app = 'tzb-app'
+primary_region = 'cdg'
 
 [build]
 
 [env]
-  ENV = "production"
-  STORAGE_BACKEND = "s3"
-  DEVICE = "cpu"
-  DETECTOR_BACKEND = "opencv"
-  MAX_VIDEO_SIZE_MB = "200"
-  MAX_VIDEO_DURATION_SECONDS = "120"
-  MAX_CONCURRENT_JOBS = "2"
-  MAX_OCCLUSION_FRAMES = "45"
+  DETECTOR_BACKEND = 'opencv'
+  DEVICE = 'cpu'
+  ENV = 'production'
+  MAX_CONCURRENT_JOBS = '2'
+  MAX_OCCLUSION_FRAMES = '45'
+  MAX_VIDEO_DURATION_SECONDS = '120'
+  MAX_VIDEO_SIZE_MB = '200'
+  STORAGE_BACKEND = 's3'
 
-# --- Process web : sert uniquement l'API, jamais de traitement vidéo lourd ---
 [processes]
-  web = "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000"
-  worker = "python worker/worker.py"
+  web = 'uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000'
+  worker = 'python worker/worker.py'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["web"]
+  processes = ['web']
 
-[[http_service.checks]]
-  interval = "15s"
-  timeout = "5s"
-  grace_period = "10s"
-  method = "GET"
-  path = "/health"
-
-[[vm]]
-  size = "shared-cpu-2x"
-  memory = "2gb"
-  processes = ["web"]
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  size = "performance-2x"  # le worker fait du traitement CPU/vidéo intensif
-  memory = "4gb"
-  processes = ["worker"]
+  size = 'shared-cpu-2x'
+  memory = '2gb'
+  processes = ['web']
 
-# Stockage recommandé : Tigris (objet, natif Fly.io, compatible S3) plutôt
-# qu'un volume — le filesystem d'une machine Fly.io n'est pas garanti
-# persistant/partagé entre web et worker.
-#   fly storage create
-# puis renseigner S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY / S3_SECRET_KEY
-# via `fly secrets set`.
+[[vm]]
+  size = 'performance-2x'
+  memory = '4gb'
+  processes = ['worker']
