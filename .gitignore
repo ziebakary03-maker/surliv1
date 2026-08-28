@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+node_modules/
+frontend/dist/
+*.mp4
+*.mov
+*.webm
+!frontend/public/**
+output/
+test_assets/
+tests/_assets/
+data/
+.DS_Store
+*.sqlite3
