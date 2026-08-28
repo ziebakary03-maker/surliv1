@@ -15,6 +15,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.get("/")
+def root():
+    return {"status": "ok", "app": settings.APP_NAME, "version": "1.0.0"}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # à restreindre en production au domaine du frontend
@@ -23,3 +29,4 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
