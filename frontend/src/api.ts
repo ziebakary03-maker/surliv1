@@ -54,7 +54,7 @@ async function json<T>(res: Response): Promise<T> {
     const body = await res.text();
     throw new Error(`${res.status}: ${body}`);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 export const api = {
