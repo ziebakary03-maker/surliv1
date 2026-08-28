@@ -54,18 +54,22 @@ async function json<T>(res: Response): Promise<T> {
     const body = await res.text();
     throw new Error(`${res.status}: ${body}`);
   }
-  return res.json() as Promise<T>;
+  return (await res.json()) as T;
 }
 
 export const api = {
   upload(file: File): Promise<UploadResponse> {
     const form = new FormData();
     form.append("file", file);
-    return fetch(`${BASE}/api/upload`, { method: "POST", body: form }).then(json);
+    return fetch(`${BASE}/api/upload`, { method: "POST", body: form }).then((res) =>
+      json<UploadResponse>(res)
+    );
   },
 
   preview(jobId: string, frame: number): Promise<FramePreview> {
-    return fetch(`${BASE}/api/jobs/${jobId}/preview/${frame}`).then(json);
+    return fetch(`${BASE}/api/jobs/${jobId}/preview/${frame}`).then((res) =>
+      json<FramePreview>(res)
+    );
   },
 
   selectTarget(jobId: string, frame: number, x: number, y: number): Promise<TargetSelectionResponse> {
@@ -73,15 +77,15 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ frame, x, y }),
-    }).then(json);
+    }).then((res) => json<TargetSelectionResponse>(res));
   },
 
   progress(jobId: string): Promise<JobProgress> {
-    return fetch(`${BASE}/api/jobs/${jobId}`).then(json);
+    return fetch(`${BASE}/api/jobs/${jobId}`).then((res) => json<JobProgress>(res));
   },
 
   result(jobId: string): Promise<JobResult> {
-    return fetch(`${BASE}/api/jobs/${jobId}/result`).then(json);
+    return fetch(`${BASE}/api/jobs/${jobId}/result`).then((res) => json<JobResult>(res));
   },
 
   deleteJob(jobId: string): Promise<void> {
