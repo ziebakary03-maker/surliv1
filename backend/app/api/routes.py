@@ -1,4 +1,3 @@
-cat > backend/app/api/routes.py << 'EOF'
 """
 API routes (section 21 du spec).
 
@@ -219,4 +218,3 @@ def delete_job(job_id: str):
                 pass
     job_manager.delete_job(job_id)
     return {"deleted": True}
-EOF
