@@ -1,3 +1,4 @@
+cat > backend/app/api/routes.py << 'EOF'
 """
 API routes (section 21 du spec).
 
@@ -39,6 +40,26 @@ def _validate_upload(file: UploadFile, size_bytes: int):
     max_bytes = settings.MAX_VIDEO_SIZE_MB * 1024 * 1024
     if size_bytes > max_bytes:
         raise HTTPException(400, f"Fichier trop volumineux (max {settings.MAX_VIDEO_SIZE_MB} Mo)")
+
+
+def _get_warmed_detections(local_path: str, target_frame: int):
+    """Crée un détecteur, le fait 'chauffer' en rejouant les frames
+    précédentes (nécessaire pour un détecteur à soustraction de fond
+    comme OpenCVDetector/MOG2, qui n'a aucune notion de 'fond' tant
+    qu'il n'a pas vu plusieurs frames), puis retourne les détections
+    de la frame ciblée.
+    """
+    cap = cv2.VideoCapture(local_path)
+    detector = build_detector()
+
+    detections = []
+    for i in range(target_frame + 1):
+        ok, frame_img = cap.read()
+        if not ok:
+            break
+        detections = detector.detect(frame_img)
+    cap.release()
+    return detections
 
 
 @router.get("/health")
@@ -84,9 +105,7 @@ def preview_frame(job_id: str, frame: int):
 
     local_path = storage.path_for_read(job["input_key"])
     image, meta = get_frame(local_path, frame)
-
-    detector = build_detector()
-    detections = detector.detect(image)
+    detections = _get_warmed_detections(local_path, frame)
 
     ok, buf = cv2.imencode(".jpg", image)
     image_b64 = base64.b64encode(buf.tobytes()).decode("utf-8")
@@ -108,9 +127,7 @@ def select_target(job_id: str, req: TargetSelectionRequest):
         raise HTTPException(404, "Job introuvable")
 
     local_path = storage.path_for_read(job["input_key"])
-    image, _ = get_frame(local_path, req.frame)
-    detector = build_detector()
-    detections = detector.detect(image)
+    detections = _get_warmed_detections(local_path, req.frame)
 
     best = None
     best_dist = float("inf")
@@ -202,3 +219,4 @@ def delete_job(job_id: str):
                 pass
     job_manager.delete_job(job_id)
     return {"deleted": True}
+EOF
