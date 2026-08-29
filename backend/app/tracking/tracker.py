@@ -66,7 +66,7 @@ class MultiObjectTracker:
         self.reid = reid or ReIdentifier()
         self.identity_switches = 0
 
-    def _cost_matrix(self, frame, detections: List[DetectedObject]):
+    def _cost_matrix(self, frame, detections: List[DetectedObject], det_histograms):
         n_tracks, n_dets = len(self.tracks), len(detections)
         cost = np.full((n_tracks, n_dets), 1e6)
         motion_w = settings.REID_MOTION_WEIGHT
@@ -80,8 +80,7 @@ class MultiObjectTracker:
                 # normalise la distance par une échelle de frame raisonnable
                 dist_norm = min(dist / 400.0, 1.0)
 
-                hist = self.reid.extract_histogram(frame, det.bbox)
-                appearance_sim = track.appearance.similarity(hist)
+                appearance_sim = track.appearance.similarity(det_histograms[j])
                 appearance_cost = 1.0 - appearance_sim
 
                 cost[i, j] = motion_w * dist_norm + appearance_w * appearance_cost
@@ -93,11 +92,17 @@ class MultiObjectTracker:
         for track in self.tracks:
             track.predicted_position = track.motion.predict()
 
+        # Histogramme calculé une seule fois par détection (crop + HSV +
+        # calcHist), puis réutilisé à la fois pour le coût d'association et
+        # pour l'initialisation des nouvelles pistes — au lieu d'être
+        # recalculé plusieurs fois par frame (cf. commentaire ci-dessous).
+        det_histograms = [self.reid.extract_histogram(frame, det.bbox) for det in detections]
+
         matched_track_idx = set()
         matched_det_idx = set()
 
         if self.tracks and detections:
-            cost = self._cost_matrix(frame, detections)
+            cost = self._cost_matrix(frame, detections, det_histograms)
             row_idx, col_idx = linear_sum_assignment(cost)
             for r, c in zip(row_idx, col_idx):
                 if cost[r, c] > 0.92:  # trop coûteux pour être un vrai match
@@ -109,8 +114,7 @@ class MultiObjectTracker:
                 track.trajectory_error = float(np.hypot(px - dx, py - dy))
 
                 track.motion.update(dx, dy)
-                hist = self.reid.extract_histogram(frame, det.bbox)
-                track.appearance.update(hist)
+                track.appearance.update(det_histograms[c])
                 track.last_bbox = det.bbox
                 track.last_confidence = det.confidence
                 track.hits += 1
@@ -138,7 +142,7 @@ class MultiObjectTracker:
                 continue
             cx, cy = _centroid(det.bbox)
             motion = MotionPredictor(cx, cy)
-            appearance = self.reid.new_signature(frame, det.bbox)
+            appearance = AppearanceSignature(det_histograms[j])
             self.tracks.append(
                 Track(
                     track_id=self._next_id,
