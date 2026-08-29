@@ -1,3 +1,4 @@
+cat > frontend/src/components/TargetSelector.tsx << 'EOF'
 import { useRef, useState } from "react";
 import type { FramePreview } from "../api";
 
@@ -93,3 +94,4 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
     </div>
   );
 }
+EOF
