@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for tzb-app on 2026-08-28T22:30:19Z
+# fly.toml app configuration file generated for tzb-frontend on 2026-08-29T00:49:45Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'tzb-app'
+app = 'tzb-frontend'
 primary_region = 'cdg'
 
 [build]
