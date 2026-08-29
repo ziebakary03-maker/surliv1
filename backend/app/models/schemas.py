@@ -56,6 +56,11 @@ class TargetSelectionRequest(BaseModel):
     frame: int = Field(..., description="Index de la frame où le clic a eu lieu")
     x: float
     y: float
+    manual_bbox: Optional[BoundingBox] = Field(
+        default=None,
+        description="Cadre dessiné manuellement par l'utilisateur (mode sélection libre). "
+                    "Si fourni, prime sur la détection automatique.",
+    )
 
 
 class TargetSelectionResponse(BaseModel):
