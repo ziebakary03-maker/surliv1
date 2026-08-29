@@ -90,4 +90,6 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
           {confirming ? "Confirmation…" : "Commencer l'analyse"}
         </button>
       </div>
-    
+    </div>
+  );
+}
