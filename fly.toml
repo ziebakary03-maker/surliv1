@@ -19,7 +19,7 @@ primary_region = 'cdg'
   STORAGE_BACKEND = 's3'
 
 [processes]
-  web = 'uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000'
+  web = 'uvicorn app.main:app --app-dir backend --host :: --port 8000'
   worker = 'python worker/worker.py'
 
 [http_service]
