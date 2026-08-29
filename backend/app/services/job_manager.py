@@ -189,13 +189,81 @@ class JobManager:
                 cur.execute("DELETE FROM jobs WHERE job_id=%s", (job_id,))
 
     def count_active_jobs(self) -> int:
+        """
+        Ne doit compter que les jobs qui occupent réellement une place de
+        traitement (section 26 : limite de concurrence pour le worker).
+
+        Bug corrigé : create_job() insère toujours status="queued", même
+        pour un job qui attend encore que l'utilisateur choisisse sa cible
+        (target_frame NULL). claim_next_job() n'y touche jamais tant que
+        target_frame est NULL, donc un upload abandonné (l'utilisateur
+        quitte la page avant de cliquer sur l'objet) restait "queued" pour
+        toujours et consommait une place dans MAX_CONCURRENT_JOBS (=2 par
+        défaut) définitivement. Il suffisait de 2 uploads abandonnés pour
+        bloquer tout le monde avec un 429 permanent. On ne compte donc
+        plus que les jobs réellement soumis au worker (queued + target
+        choisi) ou en cours de traitement.
+        """
+        self.expire_stale_jobs()
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as c FROM jobs WHERE status IN (%s, %s)",
-                    (JobStatus.QUEUED.value, JobStatus.PROCESSING.value),
+                    """SELECT COUNT(*) as c FROM jobs
+                       WHERE status = %s
+                          OR (status = %s AND target_frame IS NOT NULL)""",
+                    (JobStatus.PROCESSING.value, JobStatus.QUEUED.value),
                 )
                 return cur.fetchone()["c"]
+
+    def expire_stale_jobs(
+        self,
+        processing_timeout_seconds: float = None,
+        awaiting_target_timeout_seconds: float = None,
+    ) -> int:
+        """
+        Filet de sécurité complémentaire : si un worker crashe pendant le
+        traitement d'un job, celui-ci reste "processing" pour toujours
+        (personne ne le marque failed). On le détecte via updated_at (plus
+        de mise à jour de progression depuis trop longtemps) et on le
+        marque failed pour libérer sa place. Idem pour un job resté
+        "queued" sans target_frame pendant très longtemps (upload
+        abandonné) : on le marque failed pour ne pas laisser la table
+        grossir indéfiniment.
+        """
+        processing_timeout = processing_timeout_seconds or float(
+            os.getenv("JOB_PROCESSING_TIMEOUT_SECONDS", "900")  # 15 min sans update
+        )
+        awaiting_timeout = awaiting_target_timeout_seconds or float(
+            os.getenv("JOB_AWAITING_TARGET_TIMEOUT_SECONDS", "3600")  # 1h sans cible choisie
+        )
+        now = time.time()
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE jobs SET status=%s, error=%s, updated_at=%s
+                       WHERE status=%s AND updated_at < %s""",
+                    (
+                        JobStatus.FAILED.value,
+                        "Job expiré: aucune progression reçue (worker probablement interrompu).",
+                        now,
+                        JobStatus.PROCESSING.value,
+                        now - processing_timeout,
+                    ),
+                )
+                processing_expired = cur.rowcount
+                cur.execute(
+                    """UPDATE jobs SET status=%s, error=%s, updated_at=%s
+                       WHERE status=%s AND target_frame IS NULL AND updated_at < %s""",
+                    (
+                        JobStatus.FAILED.value,
+                        "Job expiré: aucune cible sélectionnée par l'utilisateur.",
+                        now,
+                        JobStatus.QUEUED.value,
+                        now - awaiting_timeout,
+                    ),
+                )
+                awaiting_expired = cur.rowcount
+                return processing_expired + awaiting_expired
 
 
 job_manager = JobManager()
