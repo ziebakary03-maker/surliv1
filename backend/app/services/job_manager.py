@@ -18,6 +18,7 @@ from typing import Optional
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 from app.core.config import settings
 from app.models.schemas import JobStatus
@@ -25,6 +26,26 @@ from app.models.schemas import JobStatus
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 _lock = threading.Lock()
+
+# Pool de connexions au lieu d'un psycopg2.connect() par appel : ouvrir une
+# connexion TCP + authentifier vers Postgres coûte typiquement 10-50ms sur
+# le réseau Fly.io. update_progress() étant appelé une fois par frame par le
+# worker, ça représentait avant ce changement plusieurs minutes de latence
+# réseau pure sur une vidéo de quelques milliers de frames. Le pool garde
+# les connexions ouvertes et les réutilise.
+_pool: "psycopg2.pool.ThreadedConnectionPool | None" = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=int(os.getenv("DB_POOL_MAX_CONN", "5")),
+            dsn=DATABASE_URL,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+        )
+    return _pool
 
 
 def _init_db():
@@ -59,12 +80,16 @@ def _init_db():
 
 @contextmanager
 def _connect():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 _init_db()
