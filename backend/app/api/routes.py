@@ -125,6 +125,15 @@ def select_target(job_id: str, req: TargetSelectionRequest):
     if not job:
         raise HTTPException(404, "Job introuvable")
 
+    # Mode sélection manuelle: l'utilisateur a dessiné le cadre lui-même,
+    # on l'utilise directement sans dépendre de la détection automatique.
+    if req.manual_bbox is not None:
+        job_manager.set_target(job_id, req.frame, req.x, req.y)
+        return TargetSelectionResponse(
+            job_id=job_id, target_id=1, bbox=req.manual_bbox, status=JobStatus.QUEUED
+        )
+
+    # Mode détection automatique (comportement existant)
     local_path = storage.path_for_read(job["input_key"])
     detections = _get_warmed_detections(local_path, req.frame)
 
