@@ -37,7 +37,21 @@ def process_one(job: dict):
     input_path = storage.path_for_read(job["input_key"])
     output_path = f"/tmp/{job_id}_result.mp4"
 
+    # Écrire la progression en base à CHAQUE frame ajoutait un aller-retour
+    # réseau vers Postgres par frame (des milliers sur une vidéo de
+    # quelques minutes), ce qui dominait largement le temps de traitement.
+    # On limite maintenant l'écriture à un intervalle de temps (par défaut
+    # ~4x/seconde), tout en garantissant que la toute dernière frame est
+    # toujours écrite pour que le job affiche bien 100% / l'état final.
+    min_interval = float(os.getenv("PROGRESS_UPDATE_INTERVAL_SECONDS", "0.25"))
+    state = {"last_write": 0.0}
+
     def on_progress(current_frame, total_frames, result):
+        now = time.monotonic()
+        is_last_frame = total_frames and current_frame >= total_frames - 1
+        if not is_last_frame and (now - state["last_write"]) < min_interval:
+            return
+        state["last_write"] = now
         job_manager.update_progress(
             job_id=job_id,
             current_frame=current_frame,
