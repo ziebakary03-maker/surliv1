@@ -2,9 +2,8 @@
 Point d'entrée FastAPI. Sert l'API + orchestration des jobs,
 ET sert aussi les fichiers statiques du frontend (build React).
 Le traitement lourd (pipeline vidéo) tourne dans le process `worker`
-(voir worker/worker.py), jamais dans une requête HTTP.
+(voir worker/worker.py), jamais dans une requête HTTP (section 18).
 """
-
 import os
 
 from fastapi import FastAPI
@@ -18,19 +17,18 @@ from app.core.config import settings
 app = FastAPI(
     title=settings.APP_NAME,
     description="Suivi d'identité d'un objet précis parmi plusieurs objets identiques dans une vidéo.",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # à restreindre en production au domaine du frontend
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(router)
 
-# Chemin vers les fichiers buildés du frontend (voir Dockerfile: COPY --from=frontend-build /frontend/dist ./frontend/dist)
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 
 if os.path.isdir(FRONTEND_DIST):
