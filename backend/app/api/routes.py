@@ -41,6 +41,26 @@ def _validate_upload(file: UploadFile, size_bytes: int):
         raise HTTPException(400, f"Fichier trop volumineux (max {settings.MAX_VIDEO_SIZE_MB} Mo)")
 
 
+def _get_warmed_detections(local_path: str, target_frame: int):
+    """Crée un détecteur, le fait 'chauffer' en rejouant les frames
+    précédentes (nécessaire pour un détecteur à soustraction de fond
+    comme OpenCVDetector/MOG2, qui n'a aucune notion de 'fond' tant
+    qu'il n'a pas vu plusieurs frames), puis retourne les détections
+    de la frame ciblée.
+    """
+    cap = cv2.VideoCapture(local_path)
+    detector = build_detector()
+
+    detections = []
+    for i in range(target_frame + 1):
+        ok, frame_img = cap.read()
+        if not ok:
+            break
+        detections = detector.detect(frame_img)
+    cap.release()
+    return detections
+
+
 @router.get("/health")
 def health():
     return {"status": "ok"}
@@ -84,9 +104,7 @@ def preview_frame(job_id: str, frame: int):
 
     local_path = storage.path_for_read(job["input_key"])
     image, meta = get_frame(local_path, frame)
-
-    detector = build_detector()
-    detections = detector.detect(image)
+    detections = _get_warmed_detections(local_path, frame)
 
     ok, buf = cv2.imencode(".jpg", image)
     image_b64 = base64.b64encode(buf.tobytes()).decode("utf-8")
@@ -107,10 +125,17 @@ def select_target(job_id: str, req: TargetSelectionRequest):
     if not job:
         raise HTTPException(404, "Job introuvable")
 
+    # Mode sélection manuelle: l'utilisateur a dessiné le cadre lui-même,
+    # on l'utilise directement sans dépendre de la détection automatique.
+    if req.manual_bbox is not None:
+        job_manager.set_target(job_id, req.frame, req.x, req.y)
+        return TargetSelectionResponse(
+            job_id=job_id, target_id=1, bbox=req.manual_bbox, status=JobStatus.QUEUED
+        )
+
+    # Mode détection automatique (comportement existant)
     local_path = storage.path_for_read(job["input_key"])
-    image, _ = get_frame(local_path, req.frame)
-    detector = build_detector()
-    detections = detector.detect(image)
+    detections = _get_warmed_detections(local_path, req.frame)
 
     best = None
     best_dist = float("inf")
@@ -159,6 +184,9 @@ def get_job_progress(job_id: str):
         confidence_level=level,
         identity_switches=job["identity_switches"] or 0,
         error=job["error"],
+        container_id=job.get("container_id"),
+        container_confidence=job.get("container_confidence"),
+        ball_visible=job.get("ball_visible"),
     )
 
 

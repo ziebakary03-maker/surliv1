@@ -30,16 +30,27 @@ class ConfidenceInputs:
     occlusion_frames: int            # nombre de frames consécutives sans détection
     max_occlusion_frames: int
     reid_confidence: float = 1.0     # 0..1, 1.0 si pas de ré-id nécessaire
+    # --- Section 12 : confiance spécifique au scénario "objet caché sous
+    #     conteneur". Valent 1.0 (neutre) quand non applicable, pour ne
+    #     pas casser les appels existants qui ne suivent pas de conteneur.
+    container_confidence: float = 1.0   # fiabilité de l'association boule<->conteneur
+    crossing: bool = False              # True si le conteneur suivi croise un autre en ce moment
 
 
 class ConfidenceEngine:
     WEIGHTS = {
-        "tracking_confidence": 0.25,
-        "motion_consistency": 0.20,
-        "trajectory_consistency": 0.20,
-        "appearance_similarity": 0.20,
+        "tracking_confidence": 0.20,
+        "motion_consistency": 0.15,
+        "trajectory_consistency": 0.15,
+        "appearance_similarity": 0.15,
         "reid_confidence": 0.15,
+        "container_confidence": 0.20,
     }
+
+    # Pénalité multiplicative appliquée pendant un croisement de conteneurs
+    # (section 10) : réduit temporairement la confiance sans jamais
+    # provoquer de changement d'identité silencieux.
+    CROSSING_PENALTY = 0.7
 
     def compute(self, inputs: ConfidenceInputs) -> tuple[float, ConfidenceLevel]:
         occlusion_ratio = min(inputs.occlusion_frames / max(inputs.max_occlusion_frames, 1), 1.0)
@@ -54,7 +65,11 @@ class ConfidenceEngine:
             + self.WEIGHTS["trajectory_consistency"] * inputs.trajectory_consistency
             + self.WEIGHTS["appearance_similarity"] * inputs.appearance_similarity
             + self.WEIGHTS["reid_confidence"] * inputs.reid_confidence
+            + self.WEIGHTS["container_confidence"] * inputs.container_confidence
         ) * occlusion_factor
+
+        if inputs.crossing:
+            score *= self.CROSSING_PENALTY
 
         percent = float(max(0.0, min(100.0, score * 100)))
 

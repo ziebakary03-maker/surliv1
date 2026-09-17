@@ -23,11 +23,18 @@ from typing import List
 import cv2
 import numpy as np
 
-from app.models.schemas import DetectedObject, BoundingBox
+from app.models.schemas import DetectedObject, BoundingBox, ObjectType
 from app.core.config import settings
 
 
 class BaseDetector:
+    #: True si ce détecteur peut réellement distinguer BALL de CUP
+    #: (compréhension sémantique). False = toutes les détections sont
+    #: retournées en ObjectType.UNKNOWN et le reste du pipeline doit
+    #: traiter "n'importe quelle autre piste" comme conteneur candidat
+    #: plutôt que de supposer une classe qui n'a pas été observée.
+    semantic_capable: bool = False
+
     def detect(self, frame: np.ndarray) -> List[DetectedObject]:
         raise NotImplementedError
 
@@ -47,6 +54,8 @@ class OpenCVDetector(BaseDetector):
     limite assumée et documentée dans le README ; brancher YoloDetector
     donne une détection sémantique réelle.
     """
+
+    semantic_capable = False  # blobs de mouvement, pas de notion "boule"/"gobelet"
 
     def __init__(self, expected_objects: int = 3, min_area: int = 300, learning_rate: float = 0.01):
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
@@ -90,7 +99,17 @@ class OpenCVDetector(BaseDetector):
         detections = []
         for i, (area, bbox) in enumerate(candidates):
             conf = float(np.clip(area / 5000.0, 0.3, 0.99))
-            detections.append(DetectedObject(detection_id=i, bbox=bbox, confidence=conf))
+            # object_type=UNKNOWN assumé : ce détecteur n'a pas de notion
+            # sémantique de "gobelet"/"boule" (cf. docstring de la classe).
+            # Ne PAS deviner un type ici pour ne pas afficher une fausse
+            # certitude sémantique en aval (violerait la contrainte
+            # section 24 : ne jamais prétendre détecter ce qui n'est
+            # qu'une supposition).
+            detections.append(
+                DetectedObject(
+                    detection_id=i, bbox=bbox, confidence=conf, object_type=ObjectType.UNKNOWN
+                )
+            )
         return detections
 
 
@@ -113,6 +132,28 @@ class YoloDetector(BaseDetector):
         self.model = YOLO(model_path or settings.YOLO_MODEL_PATH)
         self.confidence = confidence or settings.YOLO_CONFIDENCE_THRESHOLD
         self.device = device or settings.DEVICE
+        self.ball_class_id = settings.BALL_CLASS_ID
+        self.cup_class_id = settings.CUP_CLASS_ID
+        # semantic_capable n'est vrai que si le modèle chargé connaît
+        # réellement les classes ball/cup configurées : des poids YOLO
+        # génériques COCO (classe 32 = "sports ball", pas de "cup" dédié à
+        # ce scénario) ne doivent PAS être présentés comme sémantiquement
+        # fiables pour ce cas d'usage précis (section 13 : "ne pas
+        # supposer que les poids YOLO génériques COCO savent détecter
+        # correctement le type de gobelet et la boule de ce scénario").
+        names = getattr(self.model, "names", {}) or {}
+        self.semantic_capable = (
+            self.ball_class_id in names and self.cup_class_id in names
+        )
+        if not self.semantic_capable:
+            print(
+                "[YoloDetector] ATTENTION: le modèle chargé ne définit pas "
+                f"explicitement les classes BALL_CLASS_ID={self.ball_class_id} / "
+                f"CUP_CLASS_ID={self.cup_class_id}. Les détections seront "
+                "retournées en ObjectType.UNKNOWN — le mode sémantique "
+                "ball/cup n'est PAS disponible avec ce modèle. Entraînez un "
+                "modèle dédié (voir README) pour un mode sémantique fiable."
+            )
 
     def warmup(self):
         pass
@@ -128,11 +169,19 @@ class YoloDetector(BaseDetector):
         for i in range(len(boxes)):
             x1, y1, x2, y2 = boxes.xyxy[i].tolist()
             conf = float(boxes.conf[i].item())
+            cls_id = int(boxes.cls[i].item()) if boxes.cls is not None else -1
+            if self.semantic_capable and cls_id == self.ball_class_id:
+                obj_type = ObjectType.BALL
+            elif self.semantic_capable and cls_id == self.cup_class_id:
+                obj_type = ObjectType.CUP
+            else:
+                obj_type = ObjectType.UNKNOWN
             detections.append(
                 DetectedObject(
                     detection_id=i,
                     bbox=BoundingBox(x=x1, y=y1, width=x2 - x1, height=y2 - y1),
                     confidence=conf,
+                    object_type=obj_type,
                 )
             )
         return detections

@@ -42,7 +42,28 @@ export default function Result({ result, videoUrl, onReset }: Props) {
           <div className="stat-label">Frames traitées</div>
           <div className="stat-value">{String(metrics.total_frames ?? "—")}</div>
         </div>
+        <div className="stat">
+          <div className="stat-label">Conteneur final</div>
+          <div className="stat-value">
+            {metrics.final_container_id != null ? `CUP #${metrics.final_container_id}` : "—"}
+          </div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Frames ambiguës</div>
+          <div className="stat-value">{String(metrics.ambiguous_frames ?? "—")}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Ré-identifications</div>
+          <div className="stat-value">{String(metrics.reidentification_events ?? "—")}</div>
+        </div>
       </div>
+
+      {metrics.semantic_mode === false && (
+        <p className="mono" style={{ fontSize: "0.8rem", color: "var(--text-dim)", marginTop: "8px" }}>
+          Mode sémantique ball/cup indisponible pour cette analyse (détecteur sans compréhension
+          sémantique) : les objets ont été différenciés uniquement par mouvement/apparence/position.
+        </p>
+      )}
 
       <div className="actions-row">
         <a className="btn primary" href={videoUrl} download="tracked_result.mp4">

@@ -45,11 +45,49 @@ class Settings(BaseSettings):
     DETECTOR_BACKEND: str = os.getenv("DETECTOR_BACKEND", "opencv")
     YOLO_MODEL_PATH: str = os.getenv("YOLO_MODEL_PATH", "yolov8n.pt")
     YOLO_CONFIDENCE_THRESHOLD: float = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.4"))
+    # Classes du modèle YOLO personnalisé (section 13). Les poids YOLO
+    # génériques COCO NE savent PAS distinguer "gobelet cible" / "boule" de
+    # ce scénario : un modèle entraîné spécifiquement est nécessaire pour
+    # un mode sémantique fiable (voir README "Entraîner le modèle YOLO").
+    BALL_CLASS_ID: int = int(os.getenv("BALL_CLASS_ID", "0"))
+    CUP_CLASS_ID: int = int(os.getenv("CUP_CLASS_ID", "1"))
 
-    # --- Tracking ---
+    # --- Tracking générique ---
     MAX_OCCLUSION_FRAMES: int = int(os.getenv("MAX_OCCLUSION_FRAMES", "45"))
     REID_APPEARANCE_WEIGHT: float = float(os.getenv("REID_APPEARANCE_WEIGHT", "0.4"))
     REID_MOTION_WEIGHT: float = float(os.getenv("REID_MOTION_WEIGHT", "0.6"))
+
+    # --- Association boule <-> conteneur (section 6/9/12) ---
+    # Distance max (en pixels, fraction de la diagonale du conteneur) pour
+    # considérer que la boule disparue était "sous" tel conteneur plutôt
+    # qu'un autre.
+    CONTAINER_ASSOCIATION_THRESHOLD: float = float(os.getenv("CONTAINER_ASSOCIATION_THRESHOLD", "0.75"))
+    # Nombre de frames sans détection avant de considérer la boule
+    # "totalement occluse" plutôt qu'un simple raté ponctuel du détecteur.
+    OCCLUSION_PENDING_FRAMES: int = int(os.getenv("OCCLUSION_PENDING_FRAMES", "2"))
+
+    # --- Ré-identification (section 11) ---
+    REIDENTIFICATION_THRESHOLD: float = float(os.getenv("REIDENTIFICATION_THRESHOLD", "0.75"))
+    AMBIGUOUS_THRESHOLD: float = float(os.getenv("AMBIGUOUS_THRESHOLD", "0.45"))
+
+    # --- Poids du score d'identité combiné (section 11) ---
+    MOTION_WEIGHT: float = float(os.getenv("MOTION_WEIGHT", "0.25"))
+    APPEARANCE_WEIGHT: float = float(os.getenv("APPEARANCE_WEIGHT", "0.30"))
+    TRAJECTORY_WEIGHT: float = float(os.getenv("TRAJECTORY_WEIGHT", "0.20"))
+    CONTAINER_WEIGHT: float = float(os.getenv("CONTAINER_WEIGHT", "0.25"))
+    POSITION_PREDICTION_WEIGHT: float = float(os.getenv("POSITION_PREDICTION_WEIGHT", "0.5"))
+
+    # --- Croisements de conteneurs (section 10) ---
+    # IoU des bbox prédites au-delà duquel on considère deux conteneurs
+    # "en croisement" (confiance réduite, pas de ré-assignation d'ID).
+    CROSSING_IOU_THRESHOLD: float = float(os.getenv("CROSSING_IOU_THRESHOLD", "0.15"))
+
+    # --- Performance (section 22) ---
+    # Permet de sauter des frames de détection/tracking pour accélérer un
+    # pipeline YOLO coûteux sur CPU ; la position est alors seulement
+    # prédite (Kalman) sur les frames sautées. 1 = aucune frame sautée.
+    PROCESS_EVERY_N_FRAMES: int = int(os.getenv("PROCESS_EVERY_N_FRAMES", "1"))
+    DETECTION_INTERVAL: int = int(os.getenv("DETECTION_INTERVAL", "1"))
 
     class Config:
         env_file = ".env"

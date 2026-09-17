@@ -18,6 +18,7 @@ from app.tracking.detector import build_detector
 from app.tracking.tracker import MultiObjectTracker
 from app.tracking.identity_manager import IdentityManager
 from app.models.schemas import TargetState
+from app.core.config import settings
 
 
 @dataclass
@@ -54,21 +55,39 @@ def get_frame(path: str, frame_index: int):
 
 
 STATE_COLORS = {
+    TargetState.VISIBLE: (0, 255, 0),
     TargetState.TRACKING: (0, 200, 0),
     TargetState.CONFIDENT: (0, 255, 0),
     TargetState.FAST_MOVEMENT: (0, 165, 255),
     TargetState.OCCLUDED: (0, 140, 255),
+    TargetState.OCCLUSION_PENDING: (0, 165, 255),
+    TargetState.HIDDEN_UNDER_CUP: (0, 120, 255),
+    TargetState.CUP_TRACKING: (0, 120, 255),
     TargetState.REIDENTIFYING: (0, 100, 255),
+    TargetState.CROSSING: (0, 80, 255),
     TargetState.LOST: (0, 0, 255),
     TargetState.AMBIGUOUS: (0, 0, 200),
     TargetState.DETECTED: (200, 200, 0),
 }
 
+# États pendant lesquels la boule n'est PAS réellement détectée : la bbox
+# dessinée est une estimation dérivée du conteneur suivi (section 8/18/24).
+# Ne jamais laisser croire que c'est une vraie détection dans ce cas.
+HIDDEN_STATES = {
+    TargetState.HIDDEN_UNDER_CUP,
+    TargetState.CUP_TRACKING,
+    TargetState.OCCLUSION_PENDING,
+    TargetState.REIDENTIFYING,
+}
+
 
 def draw_target_overlay(frame, result):
     """Dessine l'épingle, le label Target #1 et le score de confiance
-    (section 16). L'épingle suit la position calculée par le tracking,
-    elle n'est jamais fixée à un endroit constant de l'écran."""
+    (section 16/18). L'épingle suit la position calculée par le tracking,
+    elle n'est jamais fixée à un endroit constant de l'écran. Quand la
+    position est une ESTIMATION (boule cachée sous un conteneur), la bbox
+    est dessinée en pointillés et étiquetée "ESTIMATED" plutôt que dessinée
+    comme une vraie détection (contrainte section 24)."""
     if result.bbox is None:
         return frame
     color = STATE_COLORS.get(result.state, (255, 255, 255))
@@ -76,22 +95,48 @@ def draw_target_overlay(frame, result):
     cx = x + w // 2
     top_y = max(0, y - 10)
 
+    is_estimated = getattr(result, "estimated", False)
+
     # Épingle (triangle + tige) au-dessus du target
     pin_tip = (cx, top_y)
     pin_top = (cx, max(0, top_y - 35))
     cv2.line(frame, pin_top, pin_tip, color, 3)
     cv2.circle(frame, pin_top, 9, color, -1)
 
-    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+    if is_estimated:
+        _draw_dashed_rect(frame, (x, y), (x + w, y + h), color, 2)
+    else:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
-    label = f"Target #1 | {result.state.value} | {result.confidence_percent:.1f}%"
-    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+    state_label = result.state.value
+    if getattr(result, "container_id", None) is not None and result.state in (
+        TargetState.HIDDEN_UNDER_CUP, TargetState.CUP_TRACKING,
+    ):
+        state_label = f"HIDDEN UNDER CUP #{result.container_id}"
+    if is_estimated:
+        state_label += " (ESTIMATED)"
+
+    label = f"Target #{result.target_id} | {state_label} | {result.confidence_percent:.1f}%"
+    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
     label_y = max(20, pin_top[1] - 10)
     cv2.rectangle(frame, (cx - tw // 2 - 4, label_y - th - 6), (cx + tw // 2 + 4, label_y + 4), color, -1)
     cv2.putText(
-        frame, label, (cx - tw // 2, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2
+        frame, label, (cx - tw // 2, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2
     )
     return frame
+
+
+def _draw_dashed_rect(frame, pt1, pt2, color, thickness=2, dash_len=8):
+    """Rectangle en pointillés : convention visuelle pour "position estimée,
+    pas une détection réelle" (section 18)."""
+    x1, y1 = pt1
+    x2, y2 = pt2
+    for x in range(x1, x2, dash_len * 2):
+        cv2.line(frame, (x, y1), (min(x + dash_len, x2), y1), color, thickness)
+        cv2.line(frame, (x, y2), (min(x + dash_len, x2), y2), color, thickness)
+    for y in range(y1, y2, dash_len * 2):
+        cv2.line(frame, (x1, y), (x1, min(y + dash_len, y2)), color, thickness)
+        cv2.line(frame, (x2, y), (x2, min(y + dash_len, y2)), color, thickness)
 
 
 ProgressCallback = Callable[[int, int, "TargetFrameResult"], None]
@@ -119,6 +164,16 @@ def process_video(
     tracker = MultiObjectTracker()
     identity = IdentityManager(tracker)
 
+    if not detector.semantic_capable:
+        print(
+            "[process_video] Mode sémantique ball/cup NON disponible avec ce "
+            "détecteur (DETECTOR_BACKEND="
+            f"{settings.DETECTOR_BACKEND}) : les objets seront différenciés "
+            "uniquement par mouvement/apparence/position, pas par classe "
+            "sémantique. Voir README pour activer DETECTOR_BACKEND=yolo avec "
+            "un modèle entraîné (BALL_CLASS_ID/CUP_CLASS_ID)."
+        )
+
     frame_index = 0
     target_selected = False
     last_result = None
@@ -139,11 +194,11 @@ def process_video(
             # plutôt que d'échouer (la position cliquée reste valable tant
             # que les objets n'ont pas eu le temps de beaucoup bouger).
             if tracks:
-                identity.select_target(click_x, click_y, tracks)
+                identity.select_target(click_x, click_y, tracks, frame=frame)
                 target_selected = True
 
         if target_selected:
-            result = identity.process_frame(frame_index, tracks)
+            result = identity.process_frame(frame_index, tracks, frame=frame)
             last_result = result
             frame = draw_target_overlay(frame, result)
             if progress_cb:
@@ -155,10 +210,22 @@ def process_video(
     cap.release()
     writer.release()
 
+    # Résultat final structuré (section 19). Ne jamais inventer un résultat
+    # : si l'identité n'a pas pu être confirmée, final_state=AMBIGUOUS/LOST
+    # et final_container_id peut rester None.
+    final_state = last_result.state.value if last_result else TargetState.AMBIGUOUS.value
     return {
         "total_frames": meta.total_frames,
         "fps": meta.fps,
-        "identity_switches": tracker.identity_switches,
-        "final_confidence": last_result.confidence_percent if last_result else None,
-        "final_state": last_result.state.value if last_result else None,
+        "identity_switches": identity.identity_switches,
+        "final_confidence": last_result.confidence_percent if last_result else 0.0,
+        "final_state": final_state,
+        "target_id": identity.target_track_id,
+        "target_type": identity.target_type.value if target_selected else None,
+        "final_container_id": last_result.container_id if last_result else None,
+        "confidence": last_result.confidence_percent if last_result else 0.0,
+        "occlusion_duration": identity.occlusion_duration,
+        "ambiguous_frames": identity.ambiguous_frames,
+        "reidentification_events": identity.reidentification_events,
+        "semantic_mode": detector.semantic_capable,
     }

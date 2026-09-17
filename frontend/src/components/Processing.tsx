@@ -45,6 +45,14 @@ export default function Processing({ progress }: Props) {
             </div>
           </div>
           <div className="stat">
+            <div className="stat-label">Container</div>
+            <div className="stat-value">
+              {progress.ball_visible === false && progress.container_id != null
+                ? `CUP #${progress.container_id}`
+                : "—"}
+            </div>
+          </div>
+          <div className="stat">
             <div className="stat-label">Identity switches</div>
             <div className="stat-value">{progress.identity_switches}</div>
           </div>
