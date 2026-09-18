@@ -512,6 +512,28 @@ class IdentityManager:
             estimated=estimated,
         )
 
+    def select_target_manual(self, bbox: BoundingBox, frame) -> int:
+        """Sélection manuelle (cadre dessiné par l'utilisateur) : crée
+        directement une piste ET sa signature, sans dépendre d'une
+        détection automatique préalable (contrairement à select_target)."""
+        track = self.tracker.add_manual_track(frame, bbox, ObjectType.BALL)
+        self.target_track_id = track.track_id
+        self.target_type = ObjectType.BALL
+
+        cx, cy = _centroid(bbox)
+        if frame is not None:
+            self.signature = ObjectSignature(frame, bbox, self.tracker.reid)
+
+        self.hidden = HiddenObjectState(
+            target_id=self.target_track_id,
+            visible=True,
+            state=TargetState.VISIBLE,
+            last_visible_bbox=bbox,
+            last_visible_center=(cx, cy),
+            confidence=1.0,
+        )
+        return self.target_track_id
+
     # ------------------------------------------------------------------
     def get_target_state(self) -> HiddenObjectState:
         """Accès en lecture à l'état complet du target (section 14),
