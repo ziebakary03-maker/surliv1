@@ -51,14 +51,28 @@ def _get_warmed_detections(local_path: str, target_frame: int):
     cap = cv2.VideoCapture(local_path)
     detector = build_detector()
 
-    detections = []
+    frames = []
     for i in range(target_frame + 1):
         ok, frame_img = cap.read()
         if not ok:
             break
-        detections = detector.detect(frame_img)
+        frames.append(frame_img)
     cap.release()
-    return detections
+
+    if not frames:
+        return []
+
+    # Chauffe le modele de fond avec toutes les frames precedant la cible,
+    # puis detecte uniquement sur la derniere (la frame ciblee).
+    warmup_frames = frames[:-1]
+    target = frames[-1]
+    if warmup_frames:
+        for f in warmup_frames:
+            detector.warmup(f, n=1)
+    else:
+        detector.warmup(target, n=15)
+
+    return detector.detect(target)
 
 
 @router.get("/health")
@@ -128,7 +142,9 @@ def select_target(job_id: str, req: TargetSelectionRequest):
     # Mode sélection manuelle: l'utilisateur a dessiné le cadre lui-même,
     # on l'utilise directement sans dépendre de la détection automatique.
     if req.manual_bbox is not None:
-        job_manager.set_target(job_id, req.frame, req.x, req.y)
+        job_manager.set_target(
+            job_id, req.frame, req.x, req.y, bbox=req.manual_bbox.model_dump()
+        )
         return TargetSelectionResponse(
             job_id=job_id, target_id=1, bbox=req.manual_bbox, status=JobStatus.QUEUED
         )

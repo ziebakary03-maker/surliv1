@@ -32,6 +32,7 @@ from app.models.schemas import BoundingBox, TargetState, ConfidenceLevel, Object
 from app.tracking.tracker import MultiObjectTracker, Track, _centroid, _iou
 from app.tracking.reidentifier import ObjectSignature, MotionSignature, TrajectorySignature
 from app.tracking.confidence import ConfidenceEngine, ConfidenceInputs
+from app.tracking.uwb_provider import UWBProvider, NullUWBProvider
 from app.core.config import settings
 
 
@@ -69,9 +70,14 @@ class TargetFrameResult:
 
 
 class IdentityManager:
-    def __init__(self, tracker: MultiObjectTracker):
+    def __init__(self, tracker: MultiObjectTracker, uwb_provider: Optional[UWBProvider] = None):
         self.tracker = tracker
         self.confidence_engine = ConfidenceEngine()
+        # Section 8 : optionnel. Tant qu'aucun UWBProvider réel n'est
+        # injecté, NullUWBProvider garantit un comportement identique à
+        # avant (is_available() -> False, donc le bloc ajouté dans
+        # update_hidden_state() ci-dessous ne s'exécute jamais).
+        self.uwb = uwb_provider or NullUWBProvider()
 
         self.target_track_id: Optional[int] = None
         self.target_type: ObjectType = ObjectType.BALL
@@ -188,6 +194,28 @@ class IdentityManager:
         La position est dérivée du conteneur tant que l'association reste
         fiable : estimated_ball_position = container_center + last_offset.
         Ne prétend jamais "voir à travers" le gobelet (section 24)."""
+        # --- Section 8/11 : priorité absolue à la position physique UWB
+        # quand elle est disponible. On ne touche à rien d'autre : si le
+        # matériel n'est pas connecté ou ne renvoie rien cette frame, on
+        # retombe exactement sur le chemin caméra existant ci-dessous.
+        if self.uwb.is_available():
+            uwb_pos = self.uwb.get_position(frame_index)
+            if uwb_pos is not None:
+                ux, uy, uwb_confidence = uwb_pos
+                bw = (
+                    self.hidden.last_visible_bbox.width
+                    if self.hidden.last_visible_bbox else 20.0
+                )
+                bh = (
+                    self.hidden.last_visible_bbox.height
+                    if self.hidden.last_visible_bbox else 20.0
+                )
+                self.hidden.container_confidence = float(uwb_confidence)
+                return (
+                    BoundingBox(x=ux - bw / 2.0, y=uy - bh / 2.0, width=bw, height=bh),
+                    float(uwb_confidence),
+                )
+
         container = self.tracker.get_track(self.hidden.container_id) if self.hidden.container_id else None
 
         if container is None:

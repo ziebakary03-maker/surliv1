@@ -59,12 +59,17 @@ export default function App() {
     }
   }
 
-  async function handleConfirmTarget(frameIndex: number, x: number, y: number) {
+  async function handleConfirmTarget(
+    frameIndex: number,
+    x: number,
+    y: number,
+    manualBbox?: { x: number; y: number; width: number; height: number }
+  ) {
     if (!jobId) return;
     setConfirming(true);
     setError(null);
     try {
-      await api.selectTarget(jobId, frameIndex, x, y);
+      await api.selectTarget(jobId, frameIndex, x, y, manualBbox);
       setStage("processing");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Aucun objet détecté à cet endroit, réessayez.");

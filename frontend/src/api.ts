@@ -75,11 +75,29 @@ export const api = {
     );
   },
 
-  selectTarget(jobId: string, frame: number, x: number, y: number): Promise<TargetSelectionResponse> {
+  selectTarget(
+    jobId: string,
+    frame: number,
+    x: number,
+    y: number,
+    manualBbox?: { x: number; y: number; width: number; height: number }
+  ): Promise<TargetSelectionResponse> {
     return fetch(`${BASE}/api/jobs/${jobId}/target`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ frame, x, y }),
+      body: JSON.stringify({
+        frame,
+        x,
+        y,
+        manual_bbox: manualBbox
+          ? {
+              x: manualBbox.x,
+              y: manualBbox.y,
+              width: manualBbox.width,
+              height: manualBbox.height,
+            }
+          : null,
+      }),
     }).then((res) => json<TargetSelectionResponse>(res));
   },
 

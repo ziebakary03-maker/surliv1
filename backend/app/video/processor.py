@@ -17,7 +17,7 @@ import cv2
 from app.tracking.detector import build_detector
 from app.tracking.tracker import MultiObjectTracker
 from app.tracking.identity_manager import IdentityManager
-from app.models.schemas import TargetState
+from app.models.schemas import TargetState, BoundingBox
 from app.core.config import settings
 
 
@@ -149,6 +149,7 @@ def process_video(
     click_x: float,
     click_y: float,
     expected_objects: int = 3,
+    manual_bbox: Optional[BoundingBox] = None,
     progress_cb: Optional[ProgressCallback] = None,
 ) -> dict:
     """
@@ -187,13 +188,17 @@ def process_video(
         tracks = tracker.step(frame, detections)
 
         if not target_selected and frame_index >= click_frame:
-            # Le détecteur par soustraction de fond a besoin de quelques
-            # frames pour "apprendre" le fond avant de détecter des objets
-            # de façon fiable. Si aucune piste n'existe encore exactement à
-            # click_frame, on attend silencieusement les premières pistes
-            # plutôt que d'échouer (la position cliquée reste valable tant
-            # que les objets n'ont pas eu le temps de beaucoup bouger).
-            if tracks:
+            if manual_bbox is not None:
+                # Sélection manuelle : immédiate, ne dépend jamais du
+                # détecteur automatique (section 3, mode sélection libre).
+                identity.select_target_manual(manual_bbox, frame=frame)
+                target_selected = True
+            elif tracks:
+                # Le détecteur par soustraction de fond a besoin de quelques
+                # frames pour "apprendre" le fond avant de détecter des objets
+                # de façon fiable. Si aucune piste n'existe encore exactement à
+                # click_frame, on attend silencieusement les premières pistes
+                # plutôt que d'échouer.
                 identity.select_target(click_x, click_y, tracks, frame=frame)
                 target_selected = True
 
