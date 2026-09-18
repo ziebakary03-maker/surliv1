@@ -186,6 +186,7 @@ def get_job_progress(job_id: str):
         error=job["error"],
         container_id=job.get("container_id"),
         container_confidence=job.get("container_confidence"),
+        container_label=job.get("container_label"),
         ball_visible=job.get("ball_visible"),
     )
 
@@ -230,3 +231,4 @@ def delete_job(job_id: str):
                 pass
     job_manager.delete_job(job_id)
     return {"deleted": True}
+
