@@ -1,4 +1,3 @@
-import type { JobResult } from "../api";
 
 interface Props {
   result: JobResult;
@@ -45,7 +44,7 @@ export default function Result({ result, videoUrl, onReset }: Props) {
         <div className="stat">
           <div className="stat-label">Conteneur final</div>
           <div className="stat-value">
-            {metrics.final_container_id != null ? `CUP #${metrics.final_container_id}` : "—"}
+            {metrics.final_container_label ? String(metrics.final_container_label) : metrics.final_container_id != null ? `CUP #${metrics.final_container_id}` : "—"}
           </div>
         </div>
         <div className="stat">
