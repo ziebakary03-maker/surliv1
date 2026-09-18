@@ -157,12 +157,39 @@ class IdentityManager:
     def associate_container(self, tracks: List[Track]) -> Tuple[Optional[int], float]:
         """Détermine quel conteneur (gobelet, ou piste UNKNOWN si détecteur
         non sémantique) est le plus vraisemblablement celui sous lequel la
-        boule vient de disparaître, en utilisant sa dernière position/bbox
-        connue — jamais une position absolue arbitraire de l'écran."""
+        boule vient de disparaître.
+
+        Correctif anti-LOST (mélanges rapides) : on utilise la position
+        EXTRAPOLÉE de la boule (Kalman constant-vélocité, déjà maintenu par
+        MultiObjectTracker.step() même une fois la piste non matchée) plutôt
+        que last_visible_center figé. Entre la dernière frame où la boule
+        était visible et la confirmation de l'occlusion (OCCLUSION_PENDING_FRAMES
+        plus tard), le gobelet porteur a déjà bougé : comparer à une position
+        figée faisait rater l'association et menait à tort à AMBIGUOUS/LOST.
+        Le seuil d'association est en plus rendu adaptatif à la vitesse de
+        la scène (section 24 : ne jamais renoncer tant qu'un conteneur
+        plausible existe)."""
         if self.hidden.last_visible_center is None:
             return None, 0.0
 
-        lx, ly = self.hidden.last_visible_center
+        ball_track = self.tracker.get_track(self.target_track_id)
+        if ball_track is not None and ball_track.predicted_position is not None:
+            lx, ly = ball_track.predicted_position
+            ball_velocity = ball_track.motion.velocity
+        else:
+            lx, ly = self.hidden.last_visible_center
+            ball_velocity = (0.0, 0.0)
+
+        speed = float(np.hypot(*ball_velocity))
+        speed_ratio = min(speed / max(settings.CONTAINER_ASSOCIATION_SPEED_REFERENCE, 1e-3), 1.0)
+        threshold = (
+            settings.CONTAINER_ASSOCIATION_THRESHOLD
+            - speed_ratio * (
+                settings.CONTAINER_ASSOCIATION_THRESHOLD
+                - settings.CONTAINER_ASSOCIATION_MIN_THRESHOLD
+            )
+        )
+
         best_id, best_score = None, 0.0
 
         for track in tracks:
@@ -182,7 +209,7 @@ class IdentityManager:
                 best_score = proximity_score
                 best_id = track.track_id
 
-        if best_id is not None and best_score >= settings.CONTAINER_ASSOCIATION_THRESHOLD:
+        if best_id is not None and best_score >= threshold:
             return best_id, best_score
         return None, best_score
 

@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # considérer que la boule disparue était "sous" tel conteneur plutôt
     # qu'un autre.
     CONTAINER_ASSOCIATION_THRESHOLD: float = float(os.getenv("CONTAINER_ASSOCIATION_THRESHOLD", "0.75"))
+    # Seuil plancher utilisé quand la scène est très rapide (section 24) :
+    # on tolère une association moins nette plutôt que de renoncer et de
+    # tomber en AMBIGUOUS/LOST alors qu'un conteneur plausible existe.
+    CONTAINER_ASSOCIATION_MIN_THRESHOLD: float = float(os.getenv("CONTAINER_ASSOCIATION_MIN_THRESHOLD", "0.35"))
+    # Vitesse (px/frame) de la boule au-delà de laquelle le seuil est
+    # totalement relâché vers CONTAINER_ASSOCIATION_MIN_THRESHOLD.
+    CONTAINER_ASSOCIATION_SPEED_REFERENCE: float = float(os.getenv("CONTAINER_ASSOCIATION_SPEED_REFERENCE", "25.0"))
     # Nombre de frames sans détection avant de considérer la boule
     # "totalement occluse" plutôt qu'un simple raté ponctuel du détecteur.
     OCCLUSION_PENDING_FRAMES: int = int(os.getenv("OCCLUSION_PENDING_FRAMES", "2"))
