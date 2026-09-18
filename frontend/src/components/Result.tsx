@@ -1,3 +1,4 @@
+import type { JobResult } from "../api";
 
 interface Props {
   result: JobResult;
@@ -75,3 +76,4 @@ export default function Result({ result, videoUrl, onReset }: Props) {
     </div>
   );
 }
+
