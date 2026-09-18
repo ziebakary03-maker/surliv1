@@ -89,8 +89,13 @@ class Settings(BaseSettings):
     PROCESS_EVERY_N_FRAMES: int = int(os.getenv("PROCESS_EVERY_N_FRAMES", "1"))
     DETECTION_INTERVAL: int = int(os.getenv("DETECTION_INTERVAL", "1"))
 
+    # --- Worker / infra ---
+    WORKER_POLL_INTERVAL: int = int(os.getenv("WORKER_POLL_INTERVAL", "2"))
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
+
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

@@ -417,6 +417,24 @@ class IdentityManager:
                     # suivi du conteneur (sections 8/9).
                     self._reidentify_candidate = None
                     self._reidentify_streak = 0
+
+                    # Nouvelle tentative d'association au conteneur tant
+                    # qu'aucun n'a encore été trouvé (fix : auparavant
+                    # associate_container() n'était appelé qu'une seule
+                    # fois à l'instant de la disparition ; un échec initial
+                    # bloquait définitivement l'état en AMBIGUOUS -> LOST
+                    # même si un gobelet devenait identifiable ensuite).
+                    if self.hidden.container_id is None:
+                        retry_id, retry_score = self.associate_container(tracks)
+                        if retry_id is not None:
+                            self.hidden.container_id = retry_id
+                            self.hidden.container_confidence = retry_score
+                            retry_container = self.tracker.get_track(retry_id)
+                            if retry_container is not None and self.hidden.last_visible_center is not None:
+                                rccx, rccy = _centroid(retry_container.last_bbox)
+                                rlx, rly = self.hidden.last_visible_center
+                                self.hidden.last_offset = (rlx - rccx, rly - rccy)
+
                     est_bbox, container_conf = self.update_hidden_state(frame_index, tracks)
 
                     if self.hidden.container_id is not None:
