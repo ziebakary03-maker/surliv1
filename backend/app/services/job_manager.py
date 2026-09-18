@@ -82,6 +82,7 @@ def _init_db():
             for column_sql in (
                 "ADD COLUMN IF NOT EXISTS container_id INTEGER",
                 "ADD COLUMN IF NOT EXISTS container_confidence REAL",
+                "ADD COLUMN IF NOT EXISTS container_label TEXT",
                 "ADD COLUMN IF NOT EXISTS target_type TEXT",
                 "ADD COLUMN IF NOT EXISTS ball_visible BOOLEAN",
             ):
@@ -159,6 +160,7 @@ class JobManager:
         identity_switches: int = 0,
         container_id: Optional[int] = None,
         container_confidence: Optional[float] = None,
+        container_label: Optional[str] = None,
         target_type: Optional[str] = None,
         ball_visible: Optional[bool] = None,
     ):
@@ -167,12 +169,12 @@ class JobManager:
                 cur.execute(
                     """UPDATE jobs SET current_frame=%s, total_frames=%s, target_id=%s,
                        target_state=%s, confidence_percent=%s, identity_switches=%s, updated_at=%s,
-                       container_id=%s, container_confidence=%s, target_type=%s, ball_visible=%s
+                       container_id=%s, container_confidence=%s, container_label=%s, target_type=%s, ball_visible=%s
                        WHERE job_id=%s""",
                     (
                         current_frame, total_frames, target_id, target_state,
                         confidence_percent, identity_switches, time.time(),
-                        container_id, container_confidence, target_type, ball_visible,
+                        container_id, container_confidence, container_label, target_type, ball_visible,
                         job_id,
                     ),
                 )
