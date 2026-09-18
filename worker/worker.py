@@ -61,6 +61,8 @@ def process_one(job: dict):
             confidence_percent=result.confidence_percent,
             identity_switches=result.identity_switches_total,
             container_id=getattr(result, "container_id", None),
+            container_confidence=getattr(result, "container_confidence", None),
+            container_label=getattr(result, "container_label", None),
             target_type=getattr(getattr(result, "target_type", None), "value", None),
             ball_visible=result.state.value in ("VISIBLE", "CROSSING", "TRACKING", "CONFIDENT"),
         )
@@ -102,3 +104,4 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
+
