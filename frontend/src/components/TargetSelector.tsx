@@ -22,6 +22,7 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Point | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
 
   function toImageCoords(clientX: number, clientY: number): Point | null {
     const img = imgRef.current;
@@ -35,6 +36,26 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
     };
   }
 
+  // Trouve le gobelet détecté dont le centre est le plus proche du curseur,
+  // pour donner un retour visuel AVANT le clic (amélioration du ciblage).
+  function nearestDetectionId(point: Point | null): string | number | null {
+    if (!point || frame.detections.length === 0) return null;
+    let bestId: string | number | null = null;
+    let bestDist = Infinity;
+    for (const d of frame.detections) {
+      const cx = d.bbox.x + d.bbox.width / 2;
+      const cy = d.bbox.y + d.bbox.height / 2;
+      const dist = Math.hypot(cx - point.x, cy - point.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestId = d.detection_id;
+      }
+    }
+    return bestId;
+  }
+
+  const hoveredDetectionId = !isDragging ? nearestDetectionId(hoverPoint) : null;
+
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     const point = toImageCoords(e.clientX, e.clientY);
     if (!point) return;
@@ -44,10 +65,17 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!isDragging) return;
     const point = toImageCoords(e.clientX, e.clientY);
     if (!point) return;
-    setDragCurrent(point);
+    if (isDragging) {
+      setDragCurrent(point);
+    } else {
+      setHoverPoint(point);
+    }
+  }
+
+  function handlePointerLeave() {
+    setHoverPoint(null);
   }
 
   function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
@@ -106,22 +134,34 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerLeave}
           style={{ touchAction: "none" }}
         >
           <img ref={imgRef} src={`data:image/jpeg;base64,${frame.image_base64}`} alt={`Frame ${frame.frame_index}`} />
 
-          {frame.detections.map((d) => (
-            <div
-              key={d.detection_id}
-              className="det-box"
-              style={{
-                left: d.bbox.x * displayScale,
-                top: d.bbox.y * displayScale,
-                width: d.bbox.width * displayScale,
-                height: d.bbox.height * displayScale,
-              }}
-            />
-          ))}
+          {frame.detections.map((d) => {
+            const isHovered = d.detection_id === hoveredDetectionId;
+            return (
+              <div
+                key={d.detection_id}
+                className="det-box"
+                style={{
+                  left: d.bbox.x * displayScale,
+                  top: d.bbox.y * displayScale,
+                  width: d.bbox.width * displayScale,
+                  height: d.bbox.height * displayScale,
+                  ...(isHovered
+                    ? {
+                        border: "2px solid #facc15",
+                        background: "rgba(250, 204, 21, 0.18)",
+                        boxShadow: "0 0 10px rgba(250, 204, 21, 0.65)",
+                        transition: "all 0.12s ease",
+                      }
+                    : { transition: "all 0.12s ease" }),
+                }}
+              />
+            );
+          })}
 
           {liveDragRect && (
             <div
@@ -183,7 +223,8 @@ export default function TargetSelector({ frame, onScrub, onConfirm, loadingFrame
       </div>
 
       <p className="hint" style={{ marginTop: 16 }}>
-        Cliquez sur un objet détecté pour le choisir, ou dessinez (glissez) un cadre pour une sélection manuelle précise.
+        Survolez un gobelet détecté pour voir lequel sera choisi (surligné en jaune), cliquez pour le
+        sélectionner, ou dessinez (glissez) un cadre pour une sélection manuelle précise.
       </p>
 
       {error && <div className="error-box">{error}</div>}
