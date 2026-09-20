@@ -191,6 +191,26 @@ class MultiObjectTracker:
 
         return self.tracks
 
+    def add_manual_track(self, frame, bbox: BoundingBox, object_type: ObjectType = ObjectType.UNKNOWN) -> Track:
+        """Crée une piste directement à partir d'un cadre dessiné par
+        l'utilisateur (mode sélection manuelle), sans attendre qu'une
+        détection automatique corresponde au même endroit (section 3)."""
+        histogram = self.reid.extract_histogram(frame, bbox)
+        cx, cy = _centroid(bbox)
+        motion = MotionPredictor(cx, cy)
+        appearance = AppearanceSignature(histogram)
+        track = Track(
+            track_id=self._next_id,
+            motion=motion,
+            appearance=appearance,
+            last_bbox=bbox,
+            last_confidence=1.0,
+            object_type=object_type,
+        )
+        self.tracks.append(track)
+        self._next_id += 1
+        return track
+
     def get_track(self, track_id: int) -> Optional[Track]:
         return next((t for t in self.tracks if t.track_id == track_id), None)
 

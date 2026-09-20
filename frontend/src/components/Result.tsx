@@ -31,11 +31,23 @@ export default function Result({ result, videoUrl, onReset }: Props) {
         <div className="stat">
           <div className="stat-label">État final</div>
           <div className="stat-value">
-            {metrics.final_state ? (
-              <span className={`state-badge state-${metrics.final_state}`}>{String(metrics.final_state)}</span>
+            {metrics.display_state ?? metrics.final_state ? (
+              <span className={`state-badge state-${metrics.display_state ?? metrics.final_state}`}>
+                {String(metrics.display_state ?? metrics.final_state)}
+              </span>
             ) : (
               "—"
             )}
+          </div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Position</div>
+          <div className="stat-value">
+            {(() => {
+              const labels: Record<string, string> = { LEFT: "Gauche", MIDDLE: "Milieu", RIGHT: "Droite" };
+              const pos = metrics.final_position as string | undefined;
+              return pos ? labels[pos] ?? pos : "—";
+            })()}
           </div>
         </div>
         <div className="stat">

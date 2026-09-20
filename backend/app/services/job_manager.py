@@ -85,6 +85,10 @@ def _init_db():
                 "ADD COLUMN IF NOT EXISTS container_label TEXT",
                 "ADD COLUMN IF NOT EXISTS target_type TEXT",
                 "ADD COLUMN IF NOT EXISTS ball_visible BOOLEAN",
+                "ADD COLUMN IF NOT EXISTS target_bbox_x REAL",
+                "ADD COLUMN IF NOT EXISTS target_bbox_y REAL",
+                "ADD COLUMN IF NOT EXISTS target_bbox_width REAL",
+                "ADD COLUMN IF NOT EXISTS target_bbox_height REAL",
             ):
                 cur.execute(f"ALTER TABLE jobs {column_sql}")
         conn.commit()
@@ -120,13 +124,21 @@ class JobManager:
                 )
         return job_id
 
-    def set_target(self, job_id: str, frame: int, x: float, y: float):
+    def set_target(self, job_id: str, frame: int, x: float, y: float, bbox: Optional[dict] = None):
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """UPDATE jobs SET target_frame=%s, target_x=%s, target_y=%s,
+                       target_bbox_x=%s, target_bbox_y=%s, target_bbox_width=%s, target_bbox_height=%s,
                        status=%s, updated_at=%s WHERE job_id=%s""",
-                    (frame, x, y, JobStatus.QUEUED.value, time.time(), job_id),
+                    (
+                        frame, x, y,
+                        bbox["x"] if bbox else None,
+                        bbox["y"] if bbox else None,
+                        bbox["width"] if bbox else None,
+                        bbox["height"] if bbox else None,
+                        JobStatus.QUEUED.value, time.time(), job_id,
+                    ),
                 )
 
     def claim_next_job(self, worker_id: str) -> Optional[dict]:

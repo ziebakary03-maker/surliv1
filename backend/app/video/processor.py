@@ -17,7 +17,7 @@ import cv2
 from app.tracking.detector import build_detector
 from app.tracking.tracker import MultiObjectTracker
 from app.tracking.identity_manager import IdentityManager
-from app.models.schemas import TargetState
+from app.models.schemas import TargetState, BoundingBox
 from app.core.config import settings
 
 
@@ -142,6 +142,7 @@ def process_video(
     click_x: float,
     click_y: float,
     expected_objects: int = 3,
+    manual_bbox: Optional[BoundingBox] = None,
     progress_cb: Optional[ProgressCallback] = None,
 ) -> dict:
     """
@@ -180,13 +181,17 @@ def process_video(
         tracks = tracker.step(frame, detections)
 
         if not target_selected and frame_index >= click_frame:
-            # Le détecteur par soustraction de fond a besoin de quelques
-            # frames pour "apprendre" le fond avant de détecter des objets
-            # de façon fiable. Si aucune piste n'existe encore exactement à
-            # click_frame, on attend silencieusement les premières pistes
-            # plutôt que d'échouer (la position cliquée reste valable tant
-            # que les objets n'ont pas eu le temps de beaucoup bouger).
-            if tracks:
+            if manual_bbox is not None:
+                # Sélection manuelle : immédiate, ne dépend jamais du
+                # détecteur automatique (section 3, mode sélection libre).
+                identity.select_target_manual(manual_bbox, frame=frame)
+                target_selected = True
+            elif tracks:
+                # Le détecteur par soustraction de fond a besoin de quelques
+                # frames pour "apprendre" le fond avant de détecter des objets
+                # de façon fiable. Si aucune piste n'existe encore exactement à
+                # click_frame, on attend silencieusement les premières pistes
+                # plutôt que d'échouer.
                 identity.select_target(click_x, click_y, tracks, frame=frame)
                 target_selected = True
 
@@ -207,12 +212,25 @@ def process_video(
     # : si l'identité n'a pas pu être confirmée, final_state=AMBIGUOUS/LOST
     # et final_container_id peut rester None.
     final_state = last_result.state.value if last_result else TargetState.AMBIGUOUS.value
+    final_position = identity.compute_final_position(tracks, meta.width) if last_result else None
+    # "FOUND" n'est affiché que si l'état final est réellement bon avec une
+    # confiance suffisante — jamais pour masquer un AMBIGUOUS/LOST honnête
+    # (section 24 du cahier des charges : pas de fausse certitude).
+    display_state = (
+        "FOUND"
+        if last_result is not None
+        and last_result.state.value in ("VISIBLE", "CUP_TRACKING", "CONFIDENT")
+        and last_result.confidence_percent >= 60
+        else final_state
+    )
     return {
         "total_frames": meta.total_frames,
         "fps": meta.fps,
         "identity_switches": identity.identity_switches,
         "final_confidence": last_result.confidence_percent if last_result else 0.0,
         "final_state": final_state,
+        "display_state": display_state,
+        "final_position": final_position.value if final_position else None,
         "target_id": identity.target_track_id,
         "target_type": identity.target_type.value if target_selected else None,
         "final_container_id": last_result.container_id if last_result else None,

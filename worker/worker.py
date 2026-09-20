@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from app.services.job_manager import job_manager  # noqa: E402
 from app.services.storage import storage  # noqa: E402
 from app.video.processor import process_video  # noqa: E402
+from app.models.schemas import BoundingBox  # noqa: E402
 from app.core.config import settings  # noqa: E402
 
 WORKER_ID = f"worker_{uuid.uuid4().hex[:8]}"
@@ -68,12 +69,22 @@ def process_one(job: dict):
         )
 
     try:
+        manual_bbox = None
+        if job.get("target_bbox_x") is not None:
+            manual_bbox = BoundingBox(
+                x=float(job["target_bbox_x"]),
+                y=float(job["target_bbox_y"]),
+                width=float(job["target_bbox_width"]),
+                height=float(job["target_bbox_height"]),
+            )
+
         metrics = process_video(
             input_path=input_path,
             output_path=output_path,
             click_frame=int(job["target_frame"]),
             click_x=float(job["target_x"]),
             click_y=float(job["target_y"]),
+            manual_bbox=manual_bbox,
             progress_cb=on_progress,
         )
         result_key = storage.new_key("results", ".mp4")
