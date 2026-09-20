@@ -82,47 +82,40 @@ HIDDEN_STATES = {
 
 
 def draw_target_overlay(frame, result):
-    """Dessine l'épingle, le label Target #1 et le score de confiance
-    (section 16/18). L'épingle suit la position calculée par le tracking,
-    elle n'est jamais fixée à un endroit constant de l'écran. Quand la
-    position est une ESTIMATION (boule cachée sous un conteneur), la bbox
-    est dessinée en pointillés et étiquetée "ESTIMATED" plutôt que dessinée
-    comme une vraie détection (contrainte section 24)."""
-    if result.bbox is None:
+    """Dessine le verrou Cup_A au-dessus du gobelet, jamais au-dessus de la
+    boule pendant le mélange. La bbox de la boule reste disponible dans le
+    résultat pour les états visibles, mais l'overlay métier utilise
+    `container_bbox` dès qu'un gobelet porteur est verrouillé."""
+    overlay_bbox = getattr(result, "container_bbox", None) or result.bbox
+    if overlay_bbox is None:
         return frame
+
     color = STATE_COLORS.get(result.state, (255, 255, 255))
-    x, y, w, h = int(result.bbox.x), int(result.bbox.y), int(result.bbox.width), int(result.bbox.height)
+    x, y, w, h = int(overlay_bbox.x), int(overlay_bbox.y), int(overlay_bbox.width), int(overlay_bbox.height)
     cx = x + w // 2
-    top_y = max(0, y - 10)
+    top_y = max(0, y - 8)
+    label_id = getattr(result, "container_label", None) or (f"CUP #{result.container_id}" if result.container_id is not None else f"TARGET #{result.target_id}")
 
-    is_estimated = getattr(result, "estimated", False)
-
-    # Épingle (triangle + tige) au-dessus du target
+    # Flèche verticale : son ancrage est le centre du gobelet porteur.
     pin_tip = (cx, top_y)
-    pin_top = (cx, max(0, top_y - 35))
-    cv2.line(frame, pin_top, pin_tip, color, 3)
-    cv2.circle(frame, pin_top, 9, color, -1)
+    pin_top = (cx, max(8, top_y - 42))
+    cv2.line(frame, pin_top, pin_tip, color, 4)
+    cv2.circle(frame, pin_top, 10, color, -1)
+    cv2.line(frame, (cx - 7, top_y - 10), (cx, top_y), color, 3)
+    cv2.line(frame, (cx + 7, top_y - 10), (cx, top_y), color, 3)
 
-    if is_estimated:
-        _draw_dashed_rect(frame, (x, y), (x + w, y + h), color, 2)
-    else:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+    # Le gobelet est la cible visuelle. Même si la boule est cachée,
+    # l'indicateur reste attaché au gobelet et non à une position écran fixe.
+    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 3)
 
     state_label = result.state.value
-    if getattr(result, "container_id", None) is not None and result.state in (
-        TargetState.HIDDEN_UNDER_CUP, TargetState.CUP_TRACKING,
-    ):
-        state_label = f"HIDDEN UNDER CUP #{result.container_id}"
-    if is_estimated:
-        state_label += " (ESTIMATED)"
-
-    label = f"Target #{result.target_id} | {state_label} | {result.confidence_percent:.1f}%"
+    if result.container_id is not None:
+        state_label = f"{label_id} | {state_label}"
+    label = f"{state_label} | {result.confidence_percent:.1f}%"
     (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
-    label_y = max(20, pin_top[1] - 10)
-    cv2.rectangle(frame, (cx - tw // 2 - 4, label_y - th - 6), (cx + tw // 2 + 4, label_y + 4), color, -1)
-    cv2.putText(
-        frame, label, (cx - tw // 2, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2
-    )
+    label_y = max(th + 8, pin_top[1] - 8)
+    cv2.rectangle(frame, (cx - tw // 2 - 6, label_y - th - 7), (cx + tw // 2 + 6, label_y + 5), color, -1)
+    cv2.putText(frame, label, (cx - tw // 2, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
     return frame
 
 
@@ -241,9 +234,12 @@ def process_video(
         "target_id": identity.target_track_id,
         "target_type": identity.target_type.value if target_selected else None,
         "final_container_id": last_result.container_id if last_result else None,
+        "final_container_label": getattr(last_result, "container_label", None) if last_result else None,
+        "container_rebinds": getattr(identity, "_container_rebinds", 0),
         "confidence": last_result.confidence_percent if last_result else 0.0,
         "occlusion_duration": identity.occlusion_duration,
         "ambiguous_frames": identity.ambiguous_frames,
         "reidentification_events": identity.reidentification_events,
         "semantic_mode": detector.semantic_capable,
     }
+

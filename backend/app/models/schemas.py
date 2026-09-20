@@ -137,6 +137,7 @@ class JobProgress(BaseModel):
     # --- Section 20 : état du conteneur actuellement associé au target ---
     container_id: Optional[int] = None
     container_confidence: Optional[float] = None
+    container_label: Optional[str] = None
     ball_visible: Optional[bool] = None
 
 

@@ -1,4 +1,19 @@
 services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: surliv
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-surliv}
+      POSTGRES_DB: surliv
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U surliv"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     build:
       context: .
@@ -14,8 +29,12 @@ services:
       - MAX_CONCURRENT_JOBS=2
       - DEVICE=cpu
       - DETECTOR_BACKEND=opencv
+      - DATABASE_URL=postgresql://surliv:${POSTGRES_PASSWORD:-surliv}@db:5432/surliv
     volumes:
       - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
     command: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
 
   worker:
@@ -29,11 +48,16 @@ services:
       - DEVICE=cpu
       - DETECTOR_BACKEND=opencv
       - WORKER_POLL_INTERVAL=2
+      - DATABASE_URL=postgresql://surliv:${POSTGRES_PASSWORD:-surliv}@db:5432/surliv
     volumes:
       - storage:/data/storage
     command: python worker/worker.py
     depends_on:
-      - web
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
 
 volumes:
   storage:
+  db_data:
