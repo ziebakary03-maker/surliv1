@@ -219,12 +219,25 @@ def process_video(
     # : si l'identité n'a pas pu être confirmée, final_state=AMBIGUOUS/LOST
     # et final_container_id peut rester None.
     final_state = last_result.state.value if last_result else TargetState.AMBIGUOUS.value
+    final_position = identity.compute_final_position(tracks, meta.width) if last_result else None
+    # "FOUND" n'est affiché que si l'état final est réellement bon avec une
+    # confiance suffisante — jamais pour masquer un AMBIGUOUS/LOST honnête
+    # (section 24 du cahier des charges : pas de fausse certitude).
+    display_state = (
+        "FOUND"
+        if last_result is not None
+        and last_result.state.value in ("VISIBLE", "CUP_TRACKING", "CONFIDENT")
+        and last_result.confidence_percent >= 60
+        else final_state
+    )
     return {
         "total_frames": meta.total_frames,
         "fps": meta.fps,
         "identity_switches": identity.identity_switches,
         "final_confidence": last_result.confidence_percent if last_result else 0.0,
         "final_state": final_state,
+        "display_state": display_state,
+        "final_position": final_position.value if final_position else None,
         "target_id": identity.target_track_id,
         "target_type": identity.target_type.value if target_selected else None,
         "final_container_id": last_result.container_id if last_result else None,

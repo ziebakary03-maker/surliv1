@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 import numpy as np
 
-from app.models.schemas import BoundingBox, TargetState, ConfidenceLevel, ObjectType
+from app.models.schemas import BoundingBox, TargetState, ConfidenceLevel, ObjectType, CupPosition
 from app.tracking.tracker import MultiObjectTracker, Track, _centroid, _iou
 from app.tracking.reidentifier import ObjectSignature, MotionSignature, TrajectorySignature
 from app.tracking.confidence import ConfidenceEngine, ConfidenceInputs
@@ -590,6 +590,32 @@ class IdentityManager:
         return self.target_track_id
 
     # ------------------------------------------------------------------
+    # ----------------------------------------------------------------
+    # Position finale (Gauche/Milieu/Droite) du gobelet verrouillé
+    # ------------------------------------------------------------------
+    def compute_final_position(self, tracks: List[Track], frame_width: int) -> Optional[CupPosition]:
+        """Classe le gobelet verrouillé par rapport aux autres pistes encore
+        actives (plus robuste qu'un découpage fixe de l'image, qui suppose
+        les 3 gobelets répartis sur toute la largeur). Repli sur les tiers
+        de l'image si les deux autres gobelets ne sont plus détectés."""
+        if self.hidden.container_id is None:
+            return None
+        locked = self.tracker.get_track(self.hidden.container_id)
+        if locked is None:
+            return None
+        lx, _ = _centroid(locked.last_bbox)
+        others = [t for t in tracks if t.track_id != self.hidden.container_id]
+        if len(others) >= 2:
+            xs = sorted([lx] + [_centroid(t.last_bbox)[0] for t in others])
+            rank = xs.index(lx)
+            return [CupPosition.LEFT, CupPosition.MIDDLE, CupPosition.RIGHT][min(rank, 2)]
+        third = frame_width / 3.0
+        if lx < third:
+            return CupPosition.LEFT
+        if lx > 2 * third:
+            return CupPosition.RIGHT
+        return CupPosition.MIDDLE
+
     def get_target_state(self) -> HiddenObjectState:
         """Accès en lecture à l'état complet du target (section 14),
         utile pour l'API / les tests sans dupliquer la logique."""

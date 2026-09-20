@@ -48,6 +48,14 @@ class TargetState(str, Enum):
     CROSSING = "CROSSING"
 
 
+class CupPosition(str, Enum):
+    """Position finale du gobelet verrouillé, relative aux autres gobelets
+    détectés (ou aux tiers de l'image en repli)."""
+    LEFT = "LEFT"
+    MIDDLE = "MIDDLE"
+    RIGHT = "RIGHT"
+
+
 class ObjectType(str, Enum):
     """Type sémantique d'un objet suivi (section 15 du cahier des charges).
 
@@ -146,6 +154,8 @@ class TargetFinalResult(BaseModel):
     target_type: ObjectType = ObjectType.BALL
     final_state: TargetState
     final_container_id: Optional[int] = None
+    final_position: Optional[CupPosition] = None
+    display_state: str = "AMBIGUOUS"  # "FOUND" | valeur brute de final_state sinon
     confidence: float
     identity_switches: int = 0
     occlusion_duration: int = 0
