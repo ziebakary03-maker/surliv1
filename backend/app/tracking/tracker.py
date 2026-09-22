@@ -76,12 +76,22 @@ class MultiObjectTracker:
     en occlusion de courte durée.
     """
 
-    def __init__(self, max_occlusion_frames: int = None, reid: ReIdentifier = None):
+    def __init__(self, max_occlusion_frames: int = None, reid: ReIdentifier = None, max_tracks: int = None):
         self.tracks: List[Track] = []
         self._next_id = 1
         self.max_occlusion_frames = max_occlusion_frames or settings.MAX_OCCLUSION_FRAMES
         self.reid = reid or ReIdentifier()
         self.identity_switches = 0
+        # Plafond dur sur le nombre de pistes simultanément actives.
+        # Scénario cible = 3 gobelets + 1 boule = 4 objets physiques max.
+        # Sans cette limite, un blob de bruit non apparié (ombre, reflet,
+        # artefact du détecteur) devient une "nouvelle piste" à part
+        # entière : le track_id grimpe sans fin (ex: "CUP #4" alors qu'il
+        # n'y a que 3 gobelets) et le pipeline peut confondre cette piste
+        # fantôme avec un vrai conteneur. Au-delà du plafond, une
+        # détection non appariée est ignorée cette frame plutôt que de
+        # créer une identité en plus.
+        self.max_tracks = max_tracks or getattr(settings, "MAX_TRACKED_OBJECTS", 4)
 
     def _cost_matrix(self, frame, detections: List[DetectedObject], det_histograms):
         n_tracks, n_dets = len(self.tracks), len(detections)
@@ -170,9 +180,18 @@ class MultiObjectTracker:
                 alive_tracks.append(track)
         self.tracks = alive_tracks
 
-        # 3. Détections non matchées : nouvelles pistes candidates
+        # 3. Détections non matchées : nouvelles pistes candidates.
+        #    Plafonnées à self.max_tracks (scénario cible = 3 gobelets +
+        #    1 boule = 4 objets physiques max) : au-delà, une détection
+        #    non appariée est très probablement du bruit du détecteur
+        #    (ombre, reflet, artefact) et non un 5e objet réel — on
+        #    l'ignore cette frame plutôt que de créer une identité de
+        #    plus, ce qui évite les track_id qui montent sans fin et la
+        #    confusion qui en découle dans l'association conteneur.
         for j, det in enumerate(detections):
             if j in matched_det_idx:
+                continue
+            if len(self.tracks) >= self.max_tracks:
                 continue
             cx, cy = _centroid(det.bbox)
             motion = MotionPredictor(cx, cy)
@@ -194,7 +213,11 @@ class MultiObjectTracker:
     def add_manual_track(self, frame, bbox: BoundingBox, object_type: ObjectType = ObjectType.UNKNOWN) -> Track:
         """Crée une piste directement à partir d'un cadre dessiné par
         l'utilisateur (mode sélection manuelle), sans attendre qu'une
-        détection automatique corresponde au même endroit (section 3)."""
+        détection automatique corresponde au même endroit (section 3).
+        Contrairement aux pistes créées dans step(), une sélection
+        manuelle est un geste explicite de l'utilisateur désignant la
+        cible réelle : elle n'est jamais bloquée par le plafond
+        max_tracks, qui vise seulement à filtrer le bruit automatique."""
         histogram = self.reid.extract_histogram(frame, bbox)
         cx, cy = _centroid(bbox)
         motion = MotionPredictor(cx, cy)

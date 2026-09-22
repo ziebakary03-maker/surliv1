@@ -53,6 +53,19 @@ class OpenCVDetector(BaseDetector):
     détecte des "blobs en mouvement/différents du fond". C'est une
     limite assumée et documentée dans le README ; brancher YoloDetector
     donne une détection sémantique réelle.
+
+    NOTE 2 : ce détecteur garde volontairement une marge de blobs candidats
+    (au-delà du nombre d'objets réellement attendus) plutôt que de tronquer
+    strictement à expected_objects+1 : un blob de bruit (ombre, reflet) peut
+    avoir une aire plus grande qu'un petit objet réel (ex: la boule) dans une
+    frame donnée, et une troncature trop stricte ICI le ferait disparaître
+    avant même d'atteindre le tracker, cassant la ré-identification. C'est le
+    tracker (MultiObjectTracker.max_tracks, voir tracker.py) qui est
+    responsable de ne jamais créer plus de pistes actives que d'objets
+    physiquement possibles — lui peut le faire sans danger car il associe
+    d'abord chaque détection aux pistes existantes (coût combiné
+    position/apparence) avant de décider qu'une détection non appariée
+    mérite une nouvelle identité.
     """
 
     semantic_capable = False  # blobs de mouvement, pas de notion "boule"/"gobelet"
@@ -147,7 +160,7 @@ class YoloDetector(BaseDetector):
         )
         if not self.semantic_capable:
             print(
-                "[YoloDetector] ATTENTION: le modèle chargé ne définit pas "
+               "[YoloDetector] ATTENTION: le modèle chargé ne définit pas "
                 f"explicitement les classes BALL_CLASS_ID={self.ball_class_id} / "
                 f"CUP_CLASS_ID={self.cup_class_id}. Les détections seront "
                 "retournées en ObjectType.UNKNOWN — le mode sémantique "
